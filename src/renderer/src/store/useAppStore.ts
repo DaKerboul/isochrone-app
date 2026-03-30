@@ -25,7 +25,7 @@ const STORAGE_KEY = 'ors_api_key'
 export const useAppStore = create<AppState>((set) => ({
   point: null,
   mode: 'driving-car',
-  timeRanges: [3600, 7200, 10800],
+  timeRanges: [1200, 2400, 3600], // 20min, 40min, 1h
   isochrones: null,
   loading: false,
   error: null,

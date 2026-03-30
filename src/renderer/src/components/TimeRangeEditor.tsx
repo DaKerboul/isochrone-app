@@ -5,8 +5,10 @@ export function TimeRangeEditor(): React.JSX.Element {
   const { timeRanges, setTimeRanges } = useAppStore()
   const sorted = [...timeRanges].sort((a, b) => a - b)
 
-  const update = (index: number, hours: number): void => {
-    const sec = Math.max(300, Math.round(hours * 3600))
+  const ORS_MAX_SEC = 3600
+
+  const update = (index: number, minutes: number): void => {
+    const sec = Math.min(ORS_MAX_SEC, Math.max(60, Math.round(minutes) * 60))
     const next = sorted.map((v, i) => (i === index ? sec : v)).sort((a, b) => a - b)
     setTimeRanges(next)
   }
@@ -18,7 +20,9 @@ export function TimeRangeEditor(): React.JSX.Element {
 
   const add = (): void => {
     if (sorted.length >= 5) return
-    setTimeRanges([...sorted, Math.max(...sorted) + 3600])
+    const next = Math.min(ORS_MAX_SEC, Math.max(...sorted) + 600)
+    if (next === Math.max(...sorted)) return // already at max
+    setTimeRanges([...sorted, next])
   }
 
   return (
@@ -32,13 +36,13 @@ export function TimeRangeEditor(): React.JSX.Element {
           <input
             type="number"
             className="range-input"
-            min={0.1}
-            max={24}
-            step={0.5}
-            value={Math.round((t / 3600) * 10) / 10}
-            onChange={(e) => update(i, parseFloat(e.target.value) || 0.5)}
+            min={1}
+            max={60}
+            step={5}
+            value={Math.round(t / 60)}
+            onChange={(e) => update(i, parseInt(e.target.value) || 5)}
           />
-          <span className="range-preview">{formatDuration(t)}</span>
+          <span className="range-preview">min — {formatDuration(t)}</span>
           <button
             className="btn-icon"
             onClick={() => remove(i)}
@@ -49,11 +53,12 @@ export function TimeRangeEditor(): React.JSX.Element {
           </button>
         </div>
       ))}
-      {sorted.length < 5 && (
+      {sorted.length < 5 && Math.max(...sorted) < ORS_MAX_SEC && (
         <button className="btn-add" onClick={add}>
           + Ajouter une durée
         </button>
       )}
+      <p className="hint">Max 60 min — limite API ORS gratuit</p>
     </div>
   )
 }

@@ -3,6 +3,13 @@ import type { TransportMode } from '../store/useAppStore'
 
 export const ISOCHRONE_COLORS = ['#4ade80', '#fbbf24', '#f87171', '#c084fc', '#60a5fa']
 
+// Valhalla costing profiles
+const COSTING_MAP: Record<TransportMode, string> = {
+  auto: 'auto',
+  bicycle: 'bicycle',
+  pedestrian: 'pedestrian'
+}
+
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.round((seconds % 3600) / 60)
@@ -14,33 +21,33 @@ export function formatDuration(seconds: number): string {
 export async function fetchIsochrones(
   point: [number, number],
   mode: TransportMode,
-  ranges: number[],
-  apiKey: string
+  ranges: number[], // in seconds
+  valhallaUrl: string
 ): Promise<FeatureCollection> {
-  // ORS expects largest range first
-  const sorted = [...ranges].sort((a, b) => b - a)
+  // Valhalla expects minutes, sorted ascending
+  const sorted = [...ranges].sort((a, b) => a - b)
+  const contours = sorted.map((s) => ({ time: s / 60 }))
 
-  const response = await fetch(`https://api.openrouteservice.org/v2/isochrones/${mode}`, {
+  const url = `${valhallaUrl.replace(/\/$/, '')}/isochrone`
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: apiKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json, application/geo+json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      locations: [point],
-      range: sorted,
-      range_type: 'time',
-      smoothing: 10
+      locations: [{ lon: point[0], lat: point[1] }],
+      costing: COSTING_MAP[mode],
+      contours,
+      polygons: true,
+      denoise: 0.5,
+      generalize: 150
     })
   })
 
   if (!response.ok) {
     const text = await response.text()
-    let msg = `Erreur ORS ${response.status}`
+    let msg = `Erreur Valhalla ${response.status}`
     try {
       const parsed = JSON.parse(text)
-      msg = parsed.error?.message ?? parsed.message ?? msg
+      msg = parsed.error ?? parsed.error_code ? `Valhalla ${parsed.error_code}: ${parsed.error}` : msg
     } catch {
       // ignore
     }
@@ -49,14 +56,15 @@ export async function fetchIsochrones(
 
   const geojson: FeatureCollection = await response.json()
 
-  // ORS returns features largest-first; we assign colors in that order
-  const features: Feature<Polygon | MultiPolygon>[] = geojson.features.map((f, i) => ({
+  // Valhalla returns features smallest-first; reverse for layering (big polygon below)
+  const reversed = [...geojson.features].reverse()
+  const features: Feature<Polygon | MultiPolygon>[] = reversed.map((f, i) => ({
     ...(f as Feature<Polygon | MultiPolygon>),
     properties: {
       ...f.properties,
       isoColor: ISOCHRONE_COLORS[i % ISOCHRONE_COLORS.length],
       isoIndex: i,
-      isoLabel: formatDuration((f.properties?.value as number) ?? sorted[i])
+      isoLabel: formatDuration(((f.properties?.contour as number | undefined) ?? sorted[i] / 60) * 60)
     }
   }))
 

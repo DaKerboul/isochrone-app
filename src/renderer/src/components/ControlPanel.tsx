@@ -7,9 +7,9 @@ import { exportPng, exportGeoJSON } from '../utils/export'
 import { TimeRangeEditor } from './TimeRangeEditor'
 
 const MODES: { value: TransportMode; label: string; icon: string }[] = [
-  { value: 'driving-car', label: 'Voiture', icon: '🚗' },
-  { value: 'cycling-regular', label: 'Vélo', icon: '🚴' },
-  { value: 'foot-walking', label: 'Piéton', icon: '🚶' }
+  { value: 'auto', label: 'Voiture', icon: '🚗' },
+  { value: 'bicycle', label: 'Vélo', icon: '🚴' },
+  { value: 'pedestrian', label: 'Piéton', icon: '🚶' }
 ]
 
 interface ControlPanelProps {
@@ -24,19 +24,19 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
     isochrones,
     loading,
     error,
-    orsApiKey,
+    valhallaUrl,
     setPoint,
     setMode,
     setIsochrones,
     setLoading,
     setError,
-    setOrsApiKey
+    setValhallaUrl
   } = useAppStore()
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NominatimResult[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
-  const [showApiKey, setShowApiKey] = useState(!orsApiKey)
+  const [showSettings, setShowSettings] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleQueryChange = (q: string): void => {
@@ -68,15 +68,10 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
       setError('Cliquez sur la carte pour définir un point de départ.')
       return
     }
-    if (!orsApiKey.trim()) {
-      setError('Clé API ORS manquante.')
-      setShowApiKey(true)
-      return
-    }
     setError(null)
     setLoading(true)
     try {
-      const data = await fetchIsochrones(point, mode, timeRanges, orsApiKey)
+      const data = await fetchIsochrones(point, mode, timeRanges, valhallaUrl)
       setIsochrones(data)
     } catch (e) {
       setError((e as Error).message)
@@ -155,7 +150,7 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
 
       {/* Time ranges */}
       <section className="panel-section">
-        <label className="section-label">Durées de trajet</label>
+        <label className="section-label">Durées de trajet (heures)</label>
         <TimeRangeEditor />
       </section>
 
@@ -185,20 +180,18 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
         </section>
       )}
 
-      {/* API Key */}
+      {/* Settings */}
       <section className="panel-section api-section">
-        <button className="btn-link" onClick={() => setShowApiKey(!showApiKey)}>
-          {showApiKey ? '▲' : '▼'} Clé API ORS
-          {orsApiKey && <span className="key-ok"> ✓</span>}
+        <button className="btn-link" onClick={() => setShowSettings(!showSettings)}>
+          {showSettings ? '▲' : '▼'} Serveur Valhalla
         </button>
-        {showApiKey && (
+        {showSettings && (
           <input
-            type="password"
+            type="text"
             className="input-text"
-            placeholder="Clé API OpenRouteService..."
-            value={orsApiKey}
-            onChange={(e) => setOrsApiKey(e.target.value)}
-            autoComplete="off"
+            placeholder="https://routing.kerboul.me"
+            value={valhallaUrl}
+            onChange={(e) => setValhallaUrl(e.target.value)}
           />
         )}
       </section>

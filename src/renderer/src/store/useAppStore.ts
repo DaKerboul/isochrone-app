@@ -1,46 +1,44 @@
 import { create } from 'zustand'
 import type { FeatureCollection } from 'geojson'
 
-export type TransportMode = 'driving-car' | 'cycling-regular' | 'foot-walking'
+export type TransportMode = 'auto' | 'bicycle' | 'pedestrian'
 
 interface AppState {
   point: [number, number] | null
   mode: TransportMode
-  timeRanges: number[]
+  timeRanges: number[] // seconds
   isochrones: FeatureCollection | null
   loading: boolean
   error: string | null
-  orsApiKey: string
+  valhallaUrl: string
   setPoint: (point: [number, number] | null) => void
   setMode: (mode: TransportMode) => void
   setTimeRanges: (ranges: number[]) => void
   setIsochrones: (iso: FeatureCollection | null) => void
   setLoading: (v: boolean) => void
   setError: (e: string | null) => void
-  setOrsApiKey: (key: string) => void
+  setValhallaUrl: (url: string) => void
 }
 
-const STORAGE_KEY = 'ors_api_key'
+const URL_KEY = 'valhalla_url'
+const DEFAULT_URL = (import.meta.env.VITE_VALHALLA_URL as string | undefined) ?? 'https://routing.kerboul.me'
 
 export const useAppStore = create<AppState>((set) => ({
   point: null,
-  mode: 'driving-car',
-  timeRanges: [1200, 2400, 3600], // 20min, 40min, 1h
+  mode: 'auto',
+  timeRanges: [3600, 7200, 14400], // 1h, 2h, 4h
   isochrones: null,
   loading: false,
   error: null,
-  orsApiKey:
-    localStorage.getItem(STORAGE_KEY) ??
-    (import.meta.env.VITE_ORS_API_KEY as string | undefined) ??
-    '',
+  valhallaUrl: localStorage.getItem(URL_KEY) ?? DEFAULT_URL,
   setPoint: (point) => set({ point }),
   setMode: (mode) => set({ mode }),
   setTimeRanges: (timeRanges) => set({ timeRanges }),
   setIsochrones: (isochrones) => set({ isochrones }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
-  setOrsApiKey: (key) => {
-    localStorage.setItem(STORAGE_KEY, key)
-    set({ orsApiKey: key })
+  setValhallaUrl: (url) => {
+    localStorage.setItem(URL_KEY, url)
+    set({ valhallaUrl: url })
   }
 }))

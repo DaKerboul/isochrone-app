@@ -15,12 +15,28 @@ function App(): React.JSX.Element {
   const autoRecalculate = useAppStore((s) => s.autoRecalculate)
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Probe Valhalla status at startup
+  // Get Valhalla status — IPC in Electron, fetch poll in web
   useEffect(() => {
+    if (window.api) {
+      window.api.getValhallaStatus().then((s) => setValhallaStatus(s))
+      window.api.onValhallaStatus((s) => setValhallaStatus(s))
+      return
+    }
     const base = (import.meta.env.VITE_VALHALLA_URL as string | undefined) ?? 'http://127.0.0.1:8002'
-    fetch(`${base}/status`, { signal: AbortSignal.timeout(3000) })
-      .then((r) => setValhallaStatus(r.ok ? 'ready' : 'error'))
-      .catch(() => setValhallaStatus('error'))
+    const deadline = Date.now() + 180000
+    let cancelled = false
+    const poll = async (): Promise<void> => {
+      while (!cancelled && Date.now() < deadline) {
+        try {
+          const r = await fetch(`${base}/status`, { signal: AbortSignal.timeout(2000) })
+          if (r.ok) { setValhallaStatus('ready'); return }
+        } catch { /* not ready yet */ }
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+      if (!cancelled) setValhallaStatus('error')
+    }
+    poll()
+    return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate once Valhalla is ready

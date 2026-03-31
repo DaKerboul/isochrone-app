@@ -88,8 +88,20 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
   return (
     <aside className="control-panel">
       <div className="panel-header">
-        <h1 className="panel-title">🗺️ Isochrone Map</h1>
-        <span className={`status-dot status-dot--${valhallaStatus}`} title={statusLabel} />
+        <h1 className="panel-title">ISOCHRONE</h1>
+        <div className="panel-header-right">
+          {isochrones && (
+            <button
+              className="btn-share"
+              title="Copy shareable link"
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href)
+                addToast({ message: 'Link copied!', type: 'success', duration: 2000 })
+              }}
+            >🔗</button>
+          )}
+          <span className={`status-dot status-dot--${valhallaStatus}`} title={statusLabel} />
+        </div>
       </div>
 
       {/* Search */}

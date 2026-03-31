@@ -1,12 +1,14 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type maplibregl from 'maplibre-gl'
 import { MapView } from './components/Map'
 import { ControlPanel } from './components/ControlPanel'
 import { Legend } from './components/Legend'
 import { Toast } from './components/Toast'
 import { MapOverlay } from './components/MapOverlay'
+import { LandingPage } from './components/LandingPage'
 import { useAppStore } from './store/useAppStore'
 import { fetchIsochrones, cancelFetch } from './api/ors'
+import type { TransportMode } from './store/useAppStore'
 
 function App(): React.JSX.Element {
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -14,6 +16,37 @@ function App(): React.JSX.Element {
   const setValhallaStatus = useAppStore((s) => s.setValhallaStatus)
   const autoRecalculate = useAppStore((s) => s.autoRecalculate)
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const point = useAppStore((s) => s.point)
+  const mode = useAppStore((s) => s.mode)
+  const timeRanges = useAppStore((s) => s.timeRanges)
+
+  const hasHash = !!window.location.hash
+  const [showLanding, setShowLanding] = useState(() => !sessionStorage.getItem('seen') && !hasHash)
+
+  // Restore from URL hash on mount
+  useEffect(() => {
+    const hash = window.location.hash.slice(1)
+    if (!hash) return
+    try {
+      const parts = hash.split('/')
+      if (parts.length < 3) return
+      const [lat, lng] = parts[0].split(',').map(Number)
+      const modeStr = parts[1]
+      const ranges = parts[2].split('-').map(Number)
+      const { setPoint, setMode, setTimeRanges } = useAppStore.getState()
+      if (!isNaN(lat) && !isNaN(lng)) setPoint([lng, lat])
+      if (['auto', 'bicycle', 'pedestrian'].includes(modeStr)) setMode(modeStr as TransportMode)
+      if (ranges.length > 0 && ranges.every((r) => !isNaN(r) && r > 0)) setTimeRanges(ranges)
+    } catch { /* ignore malformed hash */ }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync state to URL hash
+  useEffect(() => {
+    if (!point) return
+    const sorted = [...timeRanges].sort((a, b) => a - b)
+    const hash = `#${point[1].toFixed(5)},${point[0].toFixed(5)}/${mode}/${sorted.join('-')}`
+    window.history.replaceState(null, '', hash)
+  }, [point, mode, timeRanges])
 
   // Get Valhalla status — IPC in Electron, fetch poll in web
   useEffect(() => {
@@ -42,10 +75,10 @@ function App(): React.JSX.Element {
   // Auto-calculate once Valhalla is ready
   useEffect(() => {
     if (valhallaStatus !== 'ready') return
-    const { point, mode, timeRanges, setIsochrones, setLoading, setError } = useAppStore.getState()
-    if (!point) return
+    const { point: p, mode: m, timeRanges: tr, setIsochrones, setLoading, setError } = useAppStore.getState()
+    if (!p) return
     setLoading(true)
-    fetchIsochrones(point, mode, timeRanges)
+    fetchIsochrones(p, m, tr)
       .then((data) => setIsochrones(data))
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
@@ -56,17 +89,21 @@ function App(): React.JSX.Element {
     if (!autoRecalculate || valhallaStatus !== 'ready') return
     if (autoTimerRef.current) clearTimeout(autoTimerRef.current)
     autoTimerRef.current = setTimeout(() => {
-      const { point, mode, timeRanges, setIsochrones, setLoading, setError } = useAppStore.getState()
-      if (!point) return
+      const { point: p, mode: m, timeRanges: tr, setIsochrones, setLoading, setError } = useAppStore.getState()
+      if (!p) return
       cancelFetch()
       setLoading(true)
-      fetchIsochrones(point, mode, timeRanges)
+      fetchIsochrones(p, m, tr)
         .then((data) => setIsochrones(data))
         .catch((e) => setError((e as Error).message))
         .finally(() => setLoading(false))
     }, 800)
     return () => { if (autoTimerRef.current) clearTimeout(autoTimerRef.current) }
   }) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (showLanding) {
+    return <LandingPage onStart={() => { sessionStorage.setItem('seen', '1'); setShowLanding(false) }} />
+  }
 
   if (valhallaStatus === 'starting') {
     return (

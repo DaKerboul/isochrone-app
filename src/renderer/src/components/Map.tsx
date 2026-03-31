@@ -4,18 +4,40 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useAppStore } from '../store/useAppStore'
 import type { FeatureCollection } from 'geojson'
 
+const BASEMAP_TILES = {
+  dark: [
+    'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+    'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+    'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+  ],
+  light: [
+    'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+    'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+    'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+  ],
+  satellite: [
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  ],
+}
+
+const ATTRIBUTION = '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+
 const MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
-    carto: {
-      type: 'raster',
-      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', 'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', 'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
-      tileSize: 256,
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-    }
+    'bg-dark':      { type: 'raster', tiles: BASEMAP_TILES.dark,      tileSize: 256, attribution: ATTRIBUTION },
+    'bg-light':     { type: 'raster', tiles: BASEMAP_TILES.light,     tileSize: 256, attribution: ATTRIBUTION },
+    'bg-satellite': { type: 'raster', tiles: BASEMAP_TILES.satellite, tileSize: 256, attribution: '&copy; Esri' },
   },
-  layers: [{ id: 'carto-dark', type: 'raster', source: 'carto' }]
+  layers: [
+    { id: 'bg-dark-layer',      type: 'raster', source: 'bg-dark' },
+    { id: 'bg-light-layer',     type: 'raster', source: 'bg-light',     layout: { visibility: 'none' } },
+    { id: 'bg-satellite-layer', type: 'raster', source: 'bg-satellite', layout: { visibility: 'none' } },
+  ]
 }
+
+const BG_LAYERS = { dark: 'bg-dark-layer', light: 'bg-light-layer', satellite: 'bg-satellite-layer' }
+
 const SRC_ISO = 'isochrones'
 const SRC_POINT = 'point'
 const LAYER_FILL = 'iso-fill'
@@ -30,7 +52,7 @@ type ContextMenu = { lng: number; lat: number; x: number; y: number } | null
 
 export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { point, setPoint, isochrones, hiddenLayers, timeRanges } = useAppStore()
+  const { point, setPoint, isochrones, hiddenLayers, timeRanges, basemap, setBasemap } = useAppStore()
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null)
 
   const isochronesRef = useRef<FeatureCollection | null>(null)
@@ -105,22 +127,18 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
         }
       })
 
-      // Cursor intelligence
       map.on('mouseenter', LAYER_FILL, () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', LAYER_FILL, () => { map.getCanvas().style.cursor = 'crosshair' })
 
-      // Hover popup + highlight
       map.on('mousemove', LAYER_FILL, (e) => {
         if (!e.features?.length) return
         const f = e.features[0]
         const fid = f.id as number
-
         if (hoveredIdRef.current !== null && hoveredIdRef.current !== fid) {
           map.setFeatureState({ source: SRC_ISO, id: hoveredIdRef.current }, { hovered: false })
         }
         hoveredIdRef.current = fid
         map.setFeatureState({ source: SRC_ISO, id: fid }, { hovered: true })
-
         const label = f.properties?.isoLabel as string
         popup.setLngLat(e.lngLat).setHTML(`<span>${label}</span>`).addTo(map)
       })
@@ -133,7 +151,6 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
         popup.remove()
       })
 
-      // Context menu
       map.on('contextmenu', (e) => {
         e.preventDefault()
         setContextMenu({ lng: e.lngLat.lng, lat: e.lngLat.lat, x: e.point.x, y: e.point.y })
@@ -143,7 +160,6 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
         setPoint([e.lngLat.lng, e.lngLat.lat])
       })
 
-      // Apply data that may have been set before load fired
       if (isochronesRef.current) applyIsochrones(map, isochronesRef.current, markersRef)
       if (pointRef.current) applyPoint(map, pointRef.current)
     })
@@ -169,13 +185,9 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
   useEffect(() => {
     const map = mapRef.current
     if (!map?.isStyleLoaded()) return
-
-    // Set opacity to 0 immediately, then animate in on next frame
     map.setPaintProperty(LAYER_FILL, 'fill-opacity', 0)
     map.setPaintProperty(LAYER_LINE, 'line-opacity', 0)
-
     applyIsochrones(map, isochrones, markersRef)
-
     requestAnimationFrame(() => {
       if (!mapRef.current) return
       mapRef.current.setPaintProperty(LAYER_FILL, 'fill-opacity', [
@@ -198,9 +210,34 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
     map.setFilter(LAYER_LINE, filter)
   }, [hiddenLayers, timeRanges]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sync basemap
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map?.isStyleLoaded()) return
+    Object.values(BG_LAYERS).forEach((id) => map.setLayoutProperty(id, 'visibility', 'none'))
+    map.setLayoutProperty(BG_LAYERS[basemap], 'visibility', 'visible')
+  }, [basemap]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const BASEMAP_ICONS = { dark: '🌙', light: '☀️', satellite: '🛰️' }
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} className="map-container" />
+
+      {/* Basemap switcher */}
+      <div className="basemap-switcher">
+        {(Object.keys(BASEMAP_ICONS) as Array<keyof typeof BASEMAP_ICONS>).map((b) => (
+          <button
+            key={b}
+            className={`basemap-btn${basemap === b ? ' active' : ''}`}
+            onClick={() => setBasemap(b)}
+            title={b.charAt(0).toUpperCase() + b.slice(1)}
+          >
+            {BASEMAP_ICONS[b]}
+          </button>
+        ))}
+      </div>
+
       {contextMenu && (
         <div
           className="map-context-menu"
@@ -243,14 +280,12 @@ function applyIsochrones(
   const src = map.getSource(SRC_ISO) as maplibregl.GeoJSONSource | undefined
   if (!src) return
 
-  // Clear old markers
   markersRef.current.forEach((m) => m.remove())
   markersRef.current = []
 
   src.setData(data ?? { type: 'FeatureCollection', features: [] })
 
   if (data && data.features.length > 0) {
-    // Add isochrone labels as DOM markers
     data.features.forEach((f) => {
       const label = f.properties?.isoLabel as string | undefined
       if (!label) return
@@ -270,7 +305,6 @@ function applyIsochrones(
       markersRef.current.push(marker)
     })
 
-    // Fit bounds
     const coords = data.features.flatMap((f) => {
       const g = f.geometry
       if (g.type === 'Polygon') return g.coordinates[0]

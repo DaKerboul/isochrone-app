@@ -44,6 +44,9 @@ interface AppState {
   autoRecalculate: boolean
   setAutoRecalculate: (v: boolean) => void
 
+  basemap: 'dark' | 'light' | 'satellite'
+  setBasemap: (b: 'dark' | 'light' | 'satellite') => void
+
   setPoint: (point: [number, number] | null) => void
   setMode: (mode: TransportMode) => void
   setTimeRanges: (ranges: number[]) => void
@@ -90,6 +93,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   autoRecalculate: false,
   setAutoRecalculate: (autoRecalculate) => set({ autoRecalculate }),
+
+  basemap: 'dark',
+  setBasemap: (basemap) => set({ basemap }),
 
   setPoint: (point) => set({ point }),
   setMode: (mode) => set({ mode }),

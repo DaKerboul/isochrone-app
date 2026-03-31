@@ -14,7 +14,7 @@ export function TimeRangeEditor(): React.JSX.Element {
   const sorted = [...timeRanges].sort((a, b) => a - b)
 
   const update = (index: number, hours: number): void => {
-    const sec = Math.max(1800, Math.round(hours * 2) / 2 * 3600)
+    const sec = Math.min(28800, Math.max(1800, Math.round(hours * 2) / 2 * 3600))
     const next = sorted.map((v, i) => (i === index ? sec : v)).sort((a, b) => a - b)
     setTimeRanges(next)
   }
@@ -26,7 +26,7 @@ export function TimeRangeEditor(): React.JSX.Element {
 
   const add = (): void => {
     if (sorted.length >= 8) return
-    const next = Math.min(36000, Math.max(...sorted) + 3600)
+    const next = Math.min(28800, Math.max(...sorted) + 3600)
     if (next === Math.max(...sorted)) return
     setTimeRanges([...sorted, next])
   }
@@ -48,7 +48,7 @@ export function TimeRangeEditor(): React.JSX.Element {
             type="number"
             className="range-input"
             min={0.5}
-            max={10}
+            max={8}
             step={0.5}
             value={t / 3600}
             onChange={(e) => update(i, parseFloat(e.target.value) || 0.5)}
@@ -58,7 +58,7 @@ export function TimeRangeEditor(): React.JSX.Element {
         </div>
       ))}
 
-      {sorted.length < 8 && Math.max(...sorted) < 36000 && (
+      {sorted.length < 8 && Math.max(...sorted) < 28800 && (
         <button className="btn-add" onClick={add}>+ Add a duration</button>
       )}
     </div>

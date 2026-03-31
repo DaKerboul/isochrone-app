@@ -1,10 +1,21 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useAppStore } from '../store/useAppStore'
 import type { FeatureCollection } from 'geojson'
 
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
+const MAP_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    carto: {
+      type: 'raster',
+      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', 'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', 'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+    }
+  },
+  layers: [{ id: 'carto-dark', type: 'raster', source: 'carto' }]
+}
 const SRC_ISO = 'isochrones'
 const SRC_POINT = 'point'
 const LAYER_FILL = 'iso-fill'
@@ -15,13 +26,19 @@ interface MapViewProps {
   mapRef: React.MutableRefObject<maplibregl.Map | null>
 }
 
+type ContextMenu = { lng: number; lat: number; x: number; y: number } | null
+
 export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { point, setPoint, isochrones } = useAppStore()
+  const { point, setPoint, isochrones, hiddenLayers, timeRanges } = useAppStore()
+  const [contextMenu, setContextMenu] = useState<ContextMenu>(null)
 
-  // Keep refs in sync for use inside map event handlers / load callback
   const isochronesRef = useRef<FeatureCollection | null>(null)
   const pointRef = useRef<[number, number] | null>(null)
+  const hoveredIdRef = useRef<number | null>(null)
+  const markersRef = useRef<maplibregl.Marker[]>([])
+  const popupRef = useRef<maplibregl.Popup | null>(null)
+
   isochronesRef.current = isochrones
   pointRef.current = point
 
@@ -32,33 +49,49 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
       container: containerRef.current,
       style: MAP_STYLE,
       center: [2.3522, 48.8566],
-      zoom: 5,
-      canvasContextAttributes: { preserveDrawingBuffer: true } // needed for PNG export
+      zoom: 6,
+      canvasContextAttributes: { preserveDrawingBuffer: true }
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
     map.addControl(new maplibregl.ScaleControl(), 'bottom-right')
     map.getCanvas().style.cursor = 'crosshair'
 
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      className: 'iso-popup',
+      maxWidth: 'none',
+      offset: 8
+    })
+    popupRef.current = popup
+
     map.on('load', () => {
       const empty: FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-      // Isochrone layers
-      map.addSource(SRC_ISO, { type: 'geojson', data: empty })
+      map.addSource(SRC_ISO, { type: 'geojson', data: empty, generateId: false })
       map.addLayer({
         id: LAYER_FILL,
         type: 'fill',
         source: SRC_ISO,
-        paint: { 'fill-color': ['get', 'isoColor'], 'fill-opacity': 0.25 }
+        paint: {
+          'fill-color': ['get', 'isoColor'],
+          'fill-opacity': ['case', ['boolean', ['feature-state', 'hovered'], false], 0.6, ['get', 'isoOpacity']],
+          'fill-opacity-transition': { duration: 500, delay: 0 }
+        }
       })
       map.addLayer({
         id: LAYER_LINE,
         type: 'line',
         source: SRC_ISO,
-        paint: { 'line-color': ['get', 'isoColor'], 'line-width': 2, 'line-opacity': 0.9 }
+        paint: {
+          'line-color': ['get', 'isoColor'],
+          'line-width': 2,
+          'line-opacity': 0.9,
+          'line-opacity-transition': { duration: 500, delay: 0 }
+        }
       })
 
-      // Departure point dot
       map.addSource(SRC_POINT, { type: 'geojson', data: empty })
       map.addLayer({
         id: LAYER_POINT,
@@ -72,17 +105,54 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
         }
       })
 
-      // Apply data that may have been set before load fired
-      if (isochronesRef.current) applyIsochrones(map, isochronesRef.current)
-      if (pointRef.current) applyPoint(map, pointRef.current)
-    })
+      // Cursor intelligence
+      map.on('mouseenter', LAYER_FILL, () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', LAYER_FILL, () => { map.getCanvas().style.cursor = 'crosshair' })
 
-    map.on('click', (e) => {
-      setPoint([e.lngLat.lng, e.lngLat.lat])
+      // Hover popup + highlight
+      map.on('mousemove', LAYER_FILL, (e) => {
+        if (!e.features?.length) return
+        const f = e.features[0]
+        const fid = f.id as number
+
+        if (hoveredIdRef.current !== null && hoveredIdRef.current !== fid) {
+          map.setFeatureState({ source: SRC_ISO, id: hoveredIdRef.current }, { hovered: false })
+        }
+        hoveredIdRef.current = fid
+        map.setFeatureState({ source: SRC_ISO, id: fid }, { hovered: true })
+
+        const label = f.properties?.isoLabel as string
+        popup.setLngLat(e.lngLat).setHTML(`<span>${label}</span>`).addTo(map)
+      })
+
+      map.on('mouseleave', LAYER_FILL, () => {
+        if (hoveredIdRef.current !== null) {
+          map.setFeatureState({ source: SRC_ISO, id: hoveredIdRef.current }, { hovered: false })
+        }
+        hoveredIdRef.current = null
+        popup.remove()
+      })
+
+      // Context menu
+      map.on('contextmenu', (e) => {
+        e.preventDefault()
+        setContextMenu({ lng: e.lngLat.lng, lat: e.lngLat.lat, x: e.point.x, y: e.point.y })
+      })
+      map.on('click', (e) => {
+        setContextMenu(null)
+        setPoint([e.lngLat.lng, e.lngLat.lat])
+      })
+
+      // Apply data that may have been set before load fired
+      if (isochronesRef.current) applyIsochrones(map, isochronesRef.current, markersRef)
+      if (pointRef.current) applyPoint(map, pointRef.current)
     })
 
     mapRef.current = map
     return () => {
+      markersRef.current.forEach((m) => m.remove())
+      markersRef.current = []
+      popup.remove()
       map.remove()
       mapRef.current = null
     }
@@ -95,14 +165,57 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
     applyPoint(map, point)
   }, [point]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync isochrones to map
+  // Sync isochrones to map — with fade-in
   useEffect(() => {
     const map = mapRef.current
     if (!map?.isStyleLoaded()) return
-    applyIsochrones(map, isochrones)
+
+    // Set opacity to 0 immediately, then animate in on next frame
+    map.setPaintProperty(LAYER_FILL, 'fill-opacity', 0)
+    map.setPaintProperty(LAYER_LINE, 'line-opacity', 0)
+
+    applyIsochrones(map, isochrones, markersRef)
+
+    requestAnimationFrame(() => {
+      if (!mapRef.current) return
+      mapRef.current.setPaintProperty(LAYER_FILL, 'fill-opacity', [
+        'case', ['boolean', ['feature-state', 'hovered'], false], 0.6, ['get', 'isoOpacity']
+      ])
+      mapRef.current.setPaintProperty(LAYER_LINE, 'line-opacity', 0.9)
+    })
   }, [isochrones]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={containerRef} className="map-container" />
+  // Sync hidden layers filter
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map?.isStyleLoaded()) return
+    const total = timeRanges.length
+    const visibleIndices = Array.from({ length: total }, (_, i) => i).filter((i) => !hiddenLayers.has(i))
+    const filter: maplibregl.FilterSpecification = visibleIndices.length > 0
+      ? ['in', ['get', 'isoIndex'], ['literal', visibleIndices]]
+      : ['==', 1, 0]
+    map.setFilter(LAYER_FILL, filter)
+    map.setFilter(LAYER_LINE, filter)
+  }, [hiddenLayers, timeRanges]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <div ref={containerRef} className="map-container" />
+      {contextMenu && (
+        <div
+          className="map-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button onClick={() => {
+            setPoint([contextMenu.lng, contextMenu.lat])
+            setContextMenu(null)
+          }}>
+            📍 Définir comme point de départ
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function applyPoint(map: maplibregl.Map, point: [number, number] | null): void {
@@ -110,22 +223,54 @@ function applyPoint(map: maplibregl.Map, point: [number, number] | null): void {
   if (!src) return
   src.setData(
     point
-      ? {
-          type: 'FeatureCollection',
-          features: [
-            { type: 'Feature', geometry: { type: 'Point', coordinates: point }, properties: {} }
-          ]
-        }
+      ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: point }, properties: {} }] }
       : { type: 'FeatureCollection', features: [] }
   )
 }
 
-function applyIsochrones(map: maplibregl.Map, data: FeatureCollection | null): void {
+function computeCentroid(coords: number[][]): [number, number] {
+  let x = 0, y = 0
+  const n = coords.length
+  for (const c of coords) { x += c[0]; y += c[1] }
+  return [x / n, y / n]
+}
+
+function applyIsochrones(
+  map: maplibregl.Map,
+  data: FeatureCollection | null,
+  markersRef: React.MutableRefObject<maplibregl.Marker[]>
+): void {
   const src = map.getSource(SRC_ISO) as maplibregl.GeoJSONSource | undefined
   if (!src) return
+
+  // Clear old markers
+  markersRef.current.forEach((m) => m.remove())
+  markersRef.current = []
+
   src.setData(data ?? { type: 'FeatureCollection', features: [] })
 
   if (data && data.features.length > 0) {
+    // Add isochrone labels as DOM markers
+    data.features.forEach((f) => {
+      const label = f.properties?.isoLabel as string | undefined
+      if (!label) return
+      let centroid: [number, number] | null = null
+      if (f.geometry.type === 'Polygon' && f.geometry.coordinates[0]?.length) {
+        centroid = computeCentroid(f.geometry.coordinates[0])
+      } else if (f.geometry.type === 'MultiPolygon' && f.geometry.coordinates[0]?.[0]?.length) {
+        centroid = computeCentroid(f.geometry.coordinates[0][0])
+      }
+      if (!centroid) return
+      const el = document.createElement('div')
+      el.className = 'iso-map-label'
+      el.textContent = label
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(centroid)
+        .addTo(map)
+      markersRef.current.push(marker)
+    })
+
+    // Fit bounds
     const coords = data.features.flatMap((f) => {
       const g = f.geometry
       if (g.type === 'Polygon') return g.coordinates[0]
@@ -135,10 +280,7 @@ function applyIsochrones(map: maplibregl.Map, data: FeatureCollection | null): v
     const lngs = coords.map((c) => c[0])
     const lats = coords.map((c) => c[1])
     map.fitBounds(
-      [
-        [Math.min(...lngs), Math.min(...lats)],
-        [Math.max(...lngs), Math.max(...lats)]
-      ],
+      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
       { padding: 60, duration: 800 }
     )
   }

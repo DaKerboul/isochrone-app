@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import type maplibregl from 'maplibre-gl'
 import { useAppStore, type TransportMode } from '../store/useAppStore'
-import { fetchIsochrones } from '../api/ors'
+import { fetchIsochrones, cancelFetch } from '../api/ors'
 import { searchPlace, type NominatimResult } from '../utils/geocoder'
 import { exportPng, exportGeoJSON } from '../utils/export'
 import { TimeRangeEditor } from './TimeRangeEditor'
@@ -18,35 +18,23 @@ interface ControlPanelProps {
 
 export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
   const {
-    point,
-    mode,
-    timeRanges,
-    isochrones,
-    loading,
-    error,
-    valhallaUrl,
-    setPoint,
-    setMode,
-    setIsochrones,
-    setLoading,
-    setError,
-    setValhallaUrl
+    point, mode, timeRanges, isochrones, loading, error,
+    valhallaStatus, history,
+    setPoint, setMode, setIsochrones, setLoading, setError,
+    addToast, addToHistory, restoreHistory,
+    autoRecalculate, setAutoRecalculate
   } = useAppStore()
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<NominatimResult[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleQueryChange = (q: string): void => {
     setQuery(q)
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    if (q.length < 2) {
-      setResults([])
-      setShowDropdown(false)
-      return
-    }
+    if (q.length < 2) { setResults([]); setShowDropdown(false); return }
     searchTimer.current = setTimeout(async () => {
       const r = await searchPlace(q)
       setResults(r)
@@ -64,26 +52,44 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
   }
 
   const handleCalculate = async (): Promise<void> => {
-    if (!point) {
-      setError('Cliquez sur la carte pour définir un point de départ.')
-      return
-    }
+    if (!point) { setError('Cliquez sur la carte pour définir un point de départ.'); return }
+    cancelFetch()
     setError(null)
     setLoading(true)
+    const t0 = Date.now()
     try {
-      const data = await fetchIsochrones(point, mode, timeRanges, valhallaUrl)
+      const data = await fetchIsochrones(point, mode, timeRanges)
       setIsochrones(data)
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1)
+      addToast({ message: `Calculé en ${elapsed}s`, type: 'success', duration: 3000 })
+      addToHistory({ point, mode, timeRanges, isochrones: data, timestamp: Date.now(), label: query || undefined })
     } catch (e) {
-      setError((e as Error).message)
+      const msg = (e as Error).message
+      setError(msg)
+      addToast({ message: msg, type: 'error', duration: 5000 })
     } finally {
       setLoading(false)
     }
   }
 
+  // Keyboard shortcut: Enter to calculate
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement) && !loading) {
+        handleCalculate()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [point, mode, timeRanges, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const statusLabel = valhallaStatus === 'ready' ? 'Moteur prêt' : valhallaStatus === 'starting' ? 'Démarrage...' : 'Erreur moteur'
+
   return (
     <aside className="control-panel">
       <div className="panel-header">
         <h1 className="panel-title">🗺️ Isochrone Map</h1>
+        <span className={`status-dot status-dot--${valhallaStatus}`} title={statusLabel} />
       </div>
 
       {/* Search */}
@@ -102,29 +108,23 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
           {showDropdown && (
             <ul className="search-dropdown">
               {results.map((r) => (
-                <li key={r.place_id} onMouseDown={() => selectResult(r)}>
-                  {r.display_name}
-                </li>
+                <li key={r.place_id} onMouseDown={() => selectResult(r)}>{r.display_name}</li>
               ))}
             </ul>
           )}
         </div>
         {point ? (
           <div className="coord-row">
-            <span className="coord-text">
-              📍 {point[1].toFixed(5)}, {point[0].toFixed(5)}
-            </span>
+            <span className="coord-text">📍 {point[1].toFixed(5)}, {point[0].toFixed(5)}</span>
             <button
-              className="btn-clear"
-              title="Effacer le point"
+              className="btn-copy"
+              title="Copier les coordonnées"
               onClick={() => {
-                setPoint(null)
-                setIsochrones(null)
-                setQuery('')
+                navigator.clipboard.writeText(`${point[1].toFixed(6)}, ${point[0].toFixed(6)}`)
+                addToast({ message: 'Coordonnées copiées', type: 'info', duration: 2000 })
               }}
-            >
-              ✕
-            </button>
+            >⎘</button>
+            <button className="btn-clear" title="Effacer le point" onClick={() => { setPoint(null); setIsochrones(null); setQuery('') }}>✕</button>
           </div>
         ) : (
           <p className="hint">ou cliquez directement sur la carte</p>
@@ -138,6 +138,7 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
           {MODES.map((m) => (
             <button
               key={m.value}
+              data-mode={m.value}
               className={`btn-mode${mode === m.value ? ' active' : ''}`}
               onClick={() => setMode(m.value)}
             >
@@ -159,7 +160,24 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
         <button className="btn-primary" onClick={handleCalculate} disabled={loading}>
           {loading ? '⏳ Calcul en cours...' : '⚡ Calculer les isochrones'}
         </button>
-        {error && <p className="error-msg">⚠️ {error}</p>}
+        <label className="auto-recalc-toggle">
+          <input
+            type="checkbox"
+            checked={autoRecalculate}
+            onChange={(e) => setAutoRecalculate(e.target.checked)}
+          />
+          <span>Recalcul automatique</span>
+        </label>
+        {error && (
+          <div className="error-card">
+            <span className="error-icon">⚠</span>
+            <div className="error-body">
+              <p className="error-title">Erreur de calcul</p>
+              <p className="error-detail">{error}</p>
+            </div>
+            <button className="btn-retry" onClick={handleCalculate}>↺</button>
+          </div>
+        )}
       </section>
 
       {/* Export */}
@@ -167,34 +185,32 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
         <section className="panel-section">
           <label className="section-label">Export</label>
           <div className="export-row">
-            <button
-              className="btn-secondary"
-              onClick={() => mapRef.current && exportPng(mapRef.current)}
-            >
-              📸 PNG
-            </button>
-            <button className="btn-secondary" onClick={() => exportGeoJSON(isochrones)}>
-              📄 GeoJSON
-            </button>
+            <button className="btn-secondary" onClick={() => mapRef.current && exportPng(mapRef.current)}>📸 PNG</button>
+            <button className="btn-secondary" onClick={() => exportGeoJSON(isochrones)}>📄 GeoJSON</button>
           </div>
         </section>
       )}
 
-      {/* Settings */}
-      <section className="panel-section api-section">
-        <button className="btn-link" onClick={() => setShowSettings(!showSettings)}>
-          {showSettings ? '▲' : '▼'} Serveur Valhalla
-        </button>
-        {showSettings && (
-          <input
-            type="text"
-            className="input-text"
-            placeholder="https://routing.kerboul.me"
-            value={valhallaUrl}
-            onChange={(e) => setValhallaUrl(e.target.value)}
-          />
-        )}
-      </section>
+      {/* History */}
+      {history.length > 0 && (
+        <section className="panel-section">
+          <button className="history-toggle" onClick={() => setHistoryOpen((v) => !v)}>
+            <span>Historique</span>
+            <span>{historyOpen ? '▾' : '▸'}</span>
+          </button>
+          <div className={`collapsible-body${historyOpen ? ' open' : ''}`}>
+            <div className="history-list">
+              {history.map((h) => (
+                <button key={h.id} className="history-item" onClick={() => { restoreHistory(h); addToast({ message: 'Calcul restauré', type: 'info', duration: 2000 }) }}>
+                  <span className="history-icon">{MODES.find((m) => m.value === h.mode)?.icon}</span>
+                  <span className="history-label">{h.label ?? `${h.point[1].toFixed(3)}, ${h.point[0].toFixed(3)}`}</span>
+                  <span className="history-meta">{h.timeRanges.length} zones</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
     </aside>
   )
 }

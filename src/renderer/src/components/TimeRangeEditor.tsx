@@ -1,12 +1,20 @@
 import { useAppStore } from '../store/useAppStore'
-import { formatDuration, ISOCHRONE_COLORS } from '../api/ors'
+import { formatDuration, getIsochroneColors } from '../api/ors'
+
+const PRESETS = [
+  { label: '15-30-60', ranges: [900, 1800, 3600] },
+  { label: '1h-2h-4h-8h', ranges: [3600, 7200, 14400, 28800] },
+  { label: 'Road trip', ranges: [14400, 21600, 28800, 36000] },
+  { label: '30m-1h-2h', ranges: [1800, 3600, 7200] },
+]
 
 export function TimeRangeEditor(): React.JSX.Element {
-  const { timeRanges, setTimeRanges } = useAppStore()
+  const { timeRanges, mode, setTimeRanges } = useAppStore()
+  const colors = getIsochroneColors(mode)
   const sorted = [...timeRanges].sort((a, b) => a - b)
 
   const update = (index: number, hours: number): void => {
-    const sec = Math.max(1800, Math.round(hours * 2) / 2 * 3600) // pas de 0.5h, min 30min
+    const sec = Math.max(1800, Math.round(hours * 2) / 2 * 3600)
     const next = sorted.map((v, i) => (i === index ? sec : v)).sort((a, b) => a - b)
     setTimeRanges(next)
   }
@@ -17,7 +25,7 @@ export function TimeRangeEditor(): React.JSX.Element {
   }
 
   const add = (): void => {
-    if (sorted.length >= 5) return
+    if (sorted.length >= 8) return
     const next = Math.min(36000, Math.max(...sorted) + 3600)
     if (next === Math.max(...sorted)) return
     setTimeRanges([...sorted, next])
@@ -25,12 +33,17 @@ export function TimeRangeEditor(): React.JSX.Element {
 
   return (
     <div className="time-ranges">
+      <div className="preset-chips">
+        {PRESETS.map((p) => (
+          <button key={p.label} className="preset-chip" onClick={() => setTimeRanges(p.ranges)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {sorted.map((t, i) => (
         <div key={i} className="time-range-row">
-          <span
-            className="range-dot"
-            style={{ background: ISOCHRONE_COLORS[i % ISOCHRONE_COLORS.length] }}
-          />
+          <span className="range-dot" style={{ background: colors[i % colors.length] }} />
           <input
             type="number"
             className="range-input"
@@ -41,20 +54,12 @@ export function TimeRangeEditor(): React.JSX.Element {
             onChange={(e) => update(i, parseFloat(e.target.value) || 0.5)}
           />
           <span className="range-preview">h — {formatDuration(t)}</span>
-          <button
-            className="btn-icon"
-            onClick={() => remove(i)}
-            disabled={sorted.length <= 1}
-            title="Supprimer"
-          >
-            ×
-          </button>
+          <button className="btn-icon" onClick={() => remove(i)} disabled={sorted.length <= 1} title="Supprimer">×</button>
         </div>
       ))}
-      {sorted.length < 5 && Math.max(...sorted) < 36000 && (
-        <button className="btn-add" onClick={add}>
-          + Ajouter une durée
-        </button>
+
+      {sorted.length < 8 && Math.max(...sorted) < 36000 && (
+        <button className="btn-add" onClick={add}>+ Ajouter une durée</button>
       )}
     </div>
   )

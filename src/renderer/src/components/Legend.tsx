@@ -3,16 +3,18 @@ import { useAppStore } from '../store/useAppStore'
 import { formatDuration, getIsochroneColors } from '../api/ors'
 
 function ringAreaKm2(coords: number[][]): number {
+  const R = 6371
   let area = 0
   const n = coords.length
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n
-    area += coords[i][0] * coords[j][1]
-    area -= coords[j][0] * coords[i][1]
+    const lon1 = coords[i][0] * Math.PI / 180
+    const lat1 = coords[i][1] * Math.PI / 180
+    const lon2 = coords[j][0] * Math.PI / 180
+    const lat2 = coords[j][1] * Math.PI / 180
+    area += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2))
   }
-  area = Math.abs(area) / 2
-  const midLat = (coords.reduce((s, c) => s + c[1], 0) / coords.length) * (Math.PI / 180)
-  return area * 111.32 * 111.32 * Math.cos(midLat)
+  return Math.abs(area) * R * R / 2
 }
 
 function featureAreaKm2(f: Feature): number {

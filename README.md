@@ -10,7 +10,7 @@
 [![Self-hosted](https://img.shields.io/badge/self--hosted-100%25_offline-22c55e)](https://github.com/DaKerboul/isochrone-app)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![isochrone demo](https://raw.githubusercontent.com/DaKerboul/isochrone-app/master/resources/screenshot.png)
+![isochrone demo](https://raw.githubusercontent.com/DaKerboul/isochrone-app/master/resources/preview.png)
 
 ---
 

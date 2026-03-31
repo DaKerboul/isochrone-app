@@ -12,6 +12,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
+    "predev": "wsl.exe -d Ubuntu -u root -- bash -c \"docker ps --filter name=valhalla-service --filter status=running -q | grep -q . && echo '[valhalla] already running' || (docker start valhalla-service 2>/dev/null && echo '[valhalla] started') || echo '[valhalla] WARNING: could not start valhalla-service'\"",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",

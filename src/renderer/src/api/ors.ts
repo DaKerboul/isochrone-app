@@ -104,7 +104,7 @@ export async function fetchIsochrones(
   try {
     response = await fetch(`${VALHALLA_BASE}/isochrone`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Connection': 'close' },
       body,
       signal: abortController.signal
     })

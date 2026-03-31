@@ -15,7 +15,7 @@ export function Legend(): React.JSX.Element | null {
           key={t}
           className={`legend-item${hiddenLayers.has(i) ? ' hidden' : ''}`}
           onClick={() => toggleLayer(i)}
-          title={hiddenLayers.has(i) ? 'Afficher' : 'Masquer'}
+          title={hiddenLayers.has(i) ? 'Show' : 'Hide'}
         >
           <span className="legend-swatch" style={{ background: colors[i % colors.length] }} />
           <span className="legend-label">{formatDuration(t)}</span>

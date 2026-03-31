@@ -61,7 +61,7 @@ function App(): React.JSX.Element {
             <div className="splash-ring" />
             <div className="splash-ring" />
           </div>
-          <p>Démarrage du moteur de routage...</p>
+          <p>Starting routing engine...</p>
         </div>
       </div>
     )
@@ -71,8 +71,8 @@ function App(): React.JSX.Element {
     return (
       <div className="splash splash-error">
         <div className="splash-content">
-          <p>Valhalla n'a pas pu démarrer.</p>
-          <p className="splash-hint">Vérifiez que Docker est actif dans WSL Ubuntu.</p>
+          <p>Valhalla could not start.</p>
+          <p className="splash-hint">Check that Docker is running in WSL Ubuntu.</p>
         </div>
       </div>
     )

@@ -2,9 +2,9 @@ import type { FeatureCollection, Feature, Polygon, MultiPolygon } from 'geojson'
 import type { TransportMode } from '../store/useAppStore'
 
 const ISOCHRONE_COLORS: Record<TransportMode, string[]> = {
-  pedestrian: ['#86efac', '#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534', '#14532d', '#052e16'],
-  bicycle:    ['#67e8f9', '#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#155e75', '#164e63', '#083344'],
-  auto:       ['#fcd34d', '#fbbf24', '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f', '#451a03'],
+  pedestrian: ['#bbf7d0', '#4ade80', '#16a34a', '#166534', '#a3e635', '#65a30d', '#bef264', '#4d7c0f'],
+  bicycle:    ['#a5f3fc', '#22d3ee', '#0891b2', '#155e75', '#818cf8', '#4338ca', '#6ee7b7', '#047857'],
+  auto:       ['#fef08a', '#fbbf24', '#f97316', '#dc2626', '#e879f9', '#9333ea', '#fb7185', '#be123c'],
 }
 
 export function getIsochroneColors(mode: TransportMode): string[] {
@@ -111,14 +111,14 @@ export async function fetchIsochrones(
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err
     console.error('[Valhalla] fetch error:', err)
-    throw new Error(`Erreur réseau: ${err}`)
+    throw new Error(`Network error: ${err}`)
   }
 
   console.log('[Valhalla] Response status:', response.status)
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '')
-    let msg = `Erreur Valhalla ${response.status}`
+    let msg = `Valhalla error ${response.status}`
     try {
       const parsed = JSON.parse(errText)
       if (parsed.error) msg = `Valhalla ${parsed.error_code}: ${parsed.error}`

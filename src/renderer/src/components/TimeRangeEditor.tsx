@@ -54,12 +54,12 @@ export function TimeRangeEditor(): React.JSX.Element {
             onChange={(e) => update(i, parseFloat(e.target.value) || 0.5)}
           />
           <span className="range-preview">h — {formatDuration(t)}</span>
-          <button className="btn-icon" onClick={() => remove(i)} disabled={sorted.length <= 1} title="Supprimer">×</button>
+          <button className="btn-icon" onClick={() => remove(i)} disabled={sorted.length <= 1} title="Remove">×</button>
         </div>
       ))}
 
       {sorted.length < 8 && Math.max(...sorted) < 36000 && (
-        <button className="btn-add" onClick={add}>+ Ajouter une durée</button>
+        <button className="btn-add" onClick={add}>+ Add a duration</button>
       )}
     </div>
   )

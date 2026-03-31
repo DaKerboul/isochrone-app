@@ -210,7 +210,7 @@ export function MapView({ mapRef }: MapViewProps): React.JSX.Element {
             setPoint([contextMenu.lng, contextMenu.lat])
             setContextMenu(null)
           }}>
-            📍 Définir comme point de départ
+            📍 Set as starting point
           </button>
         </div>
       )}

@@ -2,6 +2,14 @@
 
 > Offline isochrone map explorer — Electron desktop app + deployable web SPA, powered by a self-hosted [Valhalla](https://github.com/valhalla/valhalla) routing engine.
 
+[![Electron](https://img.shields.io/badge/Electron-39-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![MapLibre GL](https://img.shields.io/badge/MapLibre_GL-5-396CB2?logo=maplibre&logoColor=white)](https://maplibre.org/)
+[![Valhalla](https://img.shields.io/badge/Routing-Valhalla-FF6B35?logo=openstreetmap&logoColor=white)](https://github.com/valhalla/valhalla)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-100%25_offline-22c55e)](https://github.com/DaKerboul/isochrone-app)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 ![isochrone demo](https://raw.githubusercontent.com/DaKerboul/isochrone-app/master/resources/screenshot.png)
 
 ---

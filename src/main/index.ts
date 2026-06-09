@@ -1,9 +1,12 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
+import { homedir } from 'node:os'
 import http from 'node:http'
 import { execFile, ChildProcess } from 'node:child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+
+const VALHALLA_DATA_DIR = process.env.VALHALLA_DATA_DIR ?? join(homedir(), 'valhalla')
 
 const VALHALLA_URL = 'http://127.0.0.1:8002'
 const CONTAINER_NAME = 'valhalla-service'
@@ -69,7 +72,7 @@ async function startValhalla(): Promise<void> {
         '--name', CONTAINER_NAME,
         '--restart=unless-stopped',
         '-p', '8002:8002',
-        '-v', '/home/kerboul/valhalla:/custom_files',
+        '-v', `${VALHALLA_DATA_DIR}:/custom_files`,
         '--entrypoint', '/usr/local/bin/valhalla_service',
         'ghcr.io/gis-ops/docker-valhalla/valhalla:latest',
         '/custom_files/valhalla.json', '4'

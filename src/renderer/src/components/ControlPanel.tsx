@@ -58,7 +58,7 @@ export function ControlPanel({ mapRef }: ControlPanelProps): React.JSX.Element {
     setLoading(true)
     const t0 = Date.now()
     try {
-      const data = await fetchIsochrones(point, mode, timeRanges)
+      const data = await fetchIsochrones(point, mode, timeRanges, (partial) => setIsochrones(partial))
       setIsochrones(data)
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1)
       addToast({ message: `Computed in ${elapsed}s`, type: 'success', duration: 3000 })

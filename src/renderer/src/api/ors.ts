@@ -25,6 +25,16 @@ export function formatDuration(seconds: number): string {
   return `${m}min`
 }
 
+// Adaptive params based on the largest contour in the request.
+// Higher max range → larger polygon output → more aggressive simplification needed.
+function adaptiveParams(maxRangeSec: number): { generalize: number; denoise: number } {
+  if (maxRangeSec <= 1800)  return { generalize: 50,   denoise: 0.5 }
+  if (maxRangeSec <= 3600)  return { generalize: 150,  denoise: 0.6 }
+  if (maxRangeSec <= 7200)  return { generalize: 500,  denoise: 0.8 }
+  if (maxRangeSec <= 14400) return { generalize: 1500, denoise: 0.9 }
+  return                           { generalize: 3000, denoise: 1.0 }
+}
+
 // Ramer-Douglas-Peucker simplification
 function perpendicularDist(p: number[], a: number[], b: number[]): number {
   const dx = b[0] - a[0], dy = b[1] - a[1]
@@ -52,7 +62,6 @@ function rdp(pts: number[][], tolerance: number): number[][] {
 
 function simplifyRing(ring: number[][], tolerance: number): number[][] {
   const simplified = rdp(ring, tolerance)
-  // ensure ring is closed
   if (simplified.length > 0 && (simplified[0][0] !== simplified[simplified.length-1][0] || simplified[0][1] !== simplified[simplified.length-1][1])) {
     simplified.push(simplified[0])
   }
@@ -71,9 +80,16 @@ function simplifyGeometry(geom: Polygon | MultiPolygon, tolerance: number): Poly
 
 const VALHALLA_BASE = (import.meta.env.VITE_VALHALLA_URL as string | undefined) ?? 'http://127.0.0.1:8002'
 
+// Timeout scales with max range: base 20s + 5s per hour
+function requestTimeout(maxRangeSec: number): number {
+  return 20000 + (maxRangeSec / 3600) * 5000
+}
+
 let abortController: AbortController | null = null
+let timeoutId: ReturnType<typeof setTimeout> | null = null
 
 export function cancelFetch(): void {
+  if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
   abortController?.abort()
   abortController = null
 }
@@ -81,9 +97,12 @@ export function cancelFetch(): void {
 export async function fetchIsochrones(
   point: [number, number],
   mode: TransportMode,
-  ranges: number[]
+  ranges: number[],
+  _onPartial?: (partial: FeatureCollection) => void
 ): Promise<FeatureCollection> {
   const sorted = [...ranges].sort((a, b) => a - b)
+  const maxRange = sorted[sorted.length - 1]
+  const { generalize, denoise } = adaptiveParams(maxRange)
   const contours = sorted.map((s) => ({ time: s / 60 }))
 
   const body = JSON.stringify({
@@ -91,14 +110,22 @@ export async function fetchIsochrones(
     costing: COSTING_MAP[mode],
     contours,
     polygons: true,
-    denoise: 0.5,
-    generalize: 150
+    denoise,
+    generalize
   })
 
+  if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
   abortController?.abort()
   abortController = new AbortController()
 
-  console.log('[Valhalla] POST', `${VALHALLA_BASE}/isochrone`)
+  const timeout = requestTimeout(maxRange)
+  timeoutId = setTimeout(() => {
+    abortController?.abort()
+    abortController = null
+    timeoutId = null
+  }, timeout)
+
+  console.log(`[Valhalla] POST isochrone max=${maxRange}s gen=${generalize} den=${denoise} timeout=${timeout}ms`)
 
   let response: Response
   try {
@@ -109,11 +136,13 @@ export async function fetchIsochrones(
       signal: abortController.signal
     })
   } catch (err) {
-    if ((err as Error).name === 'AbortError') throw err
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+    if ((err as Error).name === 'AbortError') throw new Error('Computation timed out — try a shorter range or fewer contours')
     console.error('[Valhalla] fetch error:', err)
     throw new Error(`Network error: ${err}`)
   }
 
+  if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
   console.log('[Valhalla] Response status:', response.status)
 
   if (!response.ok) {
@@ -122,18 +151,19 @@ export async function fetchIsochrones(
     try {
       const parsed = JSON.parse(errText)
       if (parsed.error) msg = `Valhalla ${parsed.error_code}: ${parsed.error}`
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     throw new Error(msg)
   }
 
   const geojson: FeatureCollection = await response.json()
   const colors = getIsochroneColors(mode)
 
+  // Valhalla returns features sorted ascending (smallest first) — reverse so largest renders behind
   const reversed = [...geojson.features].reverse()
   const features: Feature<Polygon | MultiPolygon>[] = reversed.map((f, i) => {
     const geom = f.geometry as Polygon | MultiPolygon
+    const contourMin = f.properties?.contour as number | undefined
+    const rangeSec = contourMin != null ? contourMin * 60 : sorted[reversed.length - 1 - i]
     return {
       ...(f as Feature<Polygon | MultiPolygon>),
       id: i,
@@ -143,7 +173,7 @@ export async function fetchIsochrones(
         isoColor: colors[i % colors.length],
         isoOpacity: Math.min(0.18 + i * 0.04, 0.55),
         isoIndex: i,
-        isoLabel: formatDuration(((f.properties?.contour as number | undefined) ?? sorted[i] / 60) * 60)
+        isoLabel: formatDuration(rangeSec)
       }
     }
   })

@@ -36,17 +36,17 @@ export function Legend(): React.JSX.Element | null {
   const sorted = [...timeRanges].sort((a, b) => a - b)
   const colors = getIsochroneColors(mode)
 
-  const areaByIndex = new Map<number, number>()
+  const areaByLabel = new Map<string, number>()
   isochrones.features.forEach((f) => {
-    const idx = f.properties?.isoIndex as number | undefined
-    if (idx !== undefined) areaByIndex.set(idx, featureAreaKm2(f))
+    const label = f.properties?.isoLabel as string | undefined
+    if (label) areaByLabel.set(label, featureAreaKm2(f))
   })
 
   return (
     <div className="legend">
       <div className="legend-title">Reachable zones</div>
       {sorted.map((t, i) => {
-        const area = areaByIndex.get(i)
+        const area = areaByLabel.get(formatDuration(t))
         return (
           <div
             key={t}

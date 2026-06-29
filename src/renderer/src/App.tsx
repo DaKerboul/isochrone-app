@@ -78,7 +78,7 @@ function App(): React.JSX.Element {
     const { point: p, mode: m, timeRanges: tr, setIsochrones, setLoading, setError } = useAppStore.getState()
     if (!p) return
     setLoading(true)
-    fetchIsochrones(p, m, tr)
+    fetchIsochrones(p, m, tr, (partial) => setIsochrones(partial))
       .then((data) => setIsochrones(data))
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
@@ -93,7 +93,7 @@ function App(): React.JSX.Element {
       if (!p) return
       cancelFetch()
       setLoading(true)
-      fetchIsochrones(p, m, tr)
+      fetchIsochrones(p, m, tr, (partial) => setIsochrones(partial))
         .then((data) => setIsochrones(data))
         .catch((e) => setError((e as Error).message))
         .finally(() => setLoading(false))
